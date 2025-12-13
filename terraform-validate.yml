@@ -38,4 +38,4 @@ jobs:
         run: |
           echo "✅ Validating ${{ inputs.path }}..."
           terraform validate
-          echo "✅ Validation passed!"
+          echo "✅ Validation passed!!!"
