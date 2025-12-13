@@ -37,7 +37,7 @@ github-actions-library/
 
 ---
 
-## Using a Shared Workflow in Another Repository
+## Using a Shared Workflow in Another Repo
 
 In your application or infrastructure repository, create a CI file  
 (e.g., `.github/workflows/ci.yml`) and reference the shared workflow.
