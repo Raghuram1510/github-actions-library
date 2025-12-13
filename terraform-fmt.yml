@@ -1,0 +1,35 @@
+name: Terraform Format Check
+
+on:
+  workflow_call:
+    inputs:
+      path:
+        description: 'Path to Terraform module'
+        required: true
+        type: string
+      terraform-version:
+        description: 'Terraform version to use'
+        required: false
+        type: string
+        default: '1.6.0'
+
+jobs:
+  fmt:
+    name: Format Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+      
+      - name: Terraform Format Check
+        working-directory: ${{ inputs.path }}
+        run: |
+          echo "🎨 Checking format for ${{ inputs.path }}..."
+          terraform fmt -check -recursive
+          echo "✅ Format check passed!"
