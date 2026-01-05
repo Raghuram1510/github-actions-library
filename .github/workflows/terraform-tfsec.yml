@@ -1,0 +1,19 @@
+name: Terraform tfsec Security Scan
+
+on:
+  workflow_call:
+    inputs:
+      path:
+        description: 'Path to Terraform directory to scan (modules, environments, apps, etc.)'
+        required: true
+        type: string
+      severity:
+        description: 'Minimum severity to report (LOW, MEDIUM, HIGH, CRITICAL)'
+        required: false
+        type: string
+        default: 'MEDIUM'
+      terraform_version:
+        description: 'Terraform version'
+        required: false
+        type: string
+        default: '1.9.0'
