@@ -17,3 +17,42 @@ on:
         required: false
         type: string
         default: '1.9.0'
+    
+jobs:
+  tfsec:
+    name: tfsec Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Setup Terraform  # ← ADDED for consistency
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+      
+      - name: Run tfsec
+        uses: aquasecurity/tfsec-action@v1.0.3  # ← This is fine (action version, not tfsec version)
+        with:
+          working_directory: ${{ inputs.path }}
+          soft_fail: true
+          format: default
+          
+      - name: Run tfsec with Severity Filter
+        working-directory: ${{ inputs.path }}
+        run: |
+          echo "🔍 Running tfsec with ${{ inputs.severity }}+ severity..."
+          
+          # Install latest tfsec binary (1.28.14)
+          if ! command -v tfsec &> /dev/null; then
+            curl -s https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash
+          fi
+          
+          # Verify version
+          tfsec --version
+          
+          tfsec . \
+            --minimum-severity ${{ inputs.severity }} \
+            --format default \
+            --soft-fail
