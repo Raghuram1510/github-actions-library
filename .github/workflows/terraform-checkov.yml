@@ -1,93 +1,89 @@
 name: Terraform Checkov Compliance Scan
 
 on:
-  workflow_call: # it will only work When it is triggred by other pipeline
+  workflow_call:
     inputs:
-      path: # this is input parameter which will be given in pipeline which is calling this workflow.
-        description: 'Path to Terraform directory to scan (modules, environments, apps, etc.)' # Path of any director that has terraform code to scan
+      path:
+        description: 'Path to Terraform directory to scan (modules, environments, apps, etc.)'
         required: true
         type: string
-      
-      severity-threshold: # This is to fial the pipelines if there are any issues above medium. It will not faill for basic issues.
+      severity-threshold:
         description: 'Minimum severity to fail (LOW, MEDIUM, HIGH, CRITICAL)'
-        required: false # this is basically for weather you want user to give vales or not in this case they can skip it.
-        type: string 
+        required: false
+        type: string
         default: 'MEDIUM'
-      
-      frameworks: # It helps checkov to match to compliance rules like HIPPA, SOC2, CIS
+      frameworks:
         description: 'Compliance frameworks to check (hipaa,soc2,cis)'
         required: false
         type: string
         default: 'hipaa,soc2,cis'
-
-      terraform-version: # This is to set the terraform version to use for the scan.
+      terraform-version:
         description: 'Terraform version'
         required: false
         type: string
         default: '1.9.0'
 
-jobs: # defines all jobs in workflow
-  checkov: # Job ID
-    name: checkov Security Scan
-    runs-on: ubuntu-latest # This is the environment where the job will run. In this case, it's running on an Ubuntu machine.
-
-    steps: # defines all steps in job
-      - name: Checkout Code # Step ID
-        uses: actions/checkout@v4 # This is using the checkout action from GitHub Actions to get the code from the repository.
+jobs:
+  checkov:
+    name: Checkov Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
       
-      - name: Setup Terraform # Step ID
-        uses: hashicorp/setup-terraform@v3 # This is using the Terraform setup action from HashiCorp to set up Terraform.
-        with: # This is setting the Terraform version to use for the scan.
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
           terraform_version: ${{ inputs.terraform-version }}
       
-      - name: Terraform Init # Step ID
-        working-directory: ${{ inputs.path }} # This is setting the working directory to the path of the Terraform code to scan.
-        run: terraform init -backend=false # This is running the Terraform init command to initialize the Terraform code.
-        continue-on-error: true # This is setting the continue-on-error flag to true to continue the pipeline even if there are errors.
+      - name: Terraform Init
+        working-directory: ${{ inputs.path }}
+        run: terraform init -backend=false
+        continue-on-error: true
       
-      - name: Install Checkov # Step ID
-        run: pip install checkov # This is running the pip install command to install Checkov.
+      - name: Install Checkov
+        run: pip install checkov
       
-      - name: Run Checkov Compliance Scan # Step ID
-        working-directory: ${{ inputs.path }} # This is setting the working directory to the path of the Terraform code to scan.
-        run: | # This is running the Checkov command to scan the Terraform code.
+      - name: Run Checkov Compliance Scan
+        working-directory: ${{ inputs.path }}
+        run: |
           echo "🔍 Running Checkov compliance scan..."
           echo "Path: ${{ inputs.path }}"
           echo "Frameworks: ${{ inputs.frameworks }}"
           echo "Severity threshold: ${{ inputs.severity-threshold }}"
           
-          checkov -d . \ # This is running the Checkov command to scan the Terraform code.
-            --framework terraform \ # This is setting the framework to Terraform.
-            --compact \ # This is setting the format to compact.
-            --soft-fail # This is setting the soft-fail flag to true to continue the pipeline even if there are errors.
+          checkov -d . \
+            --framework terraform \
+            --compact \
+            --soft-fail
           
           echo ""
           echo "===================="
           echo "Compliance Summary"
           echo "===================="
           
-          if [[ "${{ inputs.frameworks }}" == *"hipaa"* ]]; then # This is checking if the framework is HIPAA.
+          if [[ "${{ inputs.frameworks }}" == *"hipaa"* ]]; then
             echo "Checking HIPAA compliance..."
-            checkov -d . --framework terraform --check hipaa --compact # This is running the Checkov command to scan the Terraform code.
-          fi # This is checking if the framework is SOC2.
+            checkov -d . --framework terraform --check hipaa --compact
+          fi
           
           if [[ "${{ inputs.frameworks }}" == *"soc2"* ]]; then
             echo "Checking SOC2 compliance..."
             checkov -d . --framework terraform --check soc2 --compact
-          fi # This is checking if the framework is CIS.
+          fi
           
           if [[ "${{ inputs.frameworks }}" == *"cis"* ]]; then
             echo "Checking CIS benchmarks..."
             checkov -d . --framework terraform --check cis --compact
-          fi # This is checking if the framework is HIPAA.
+          fi
       
-      - name: Upload Results # Step ID
-        if: always() # This is setting the if flag to always to run the pipeline even if there are errors.
-        uses: actions/upload-artifact@v4 # This is using the upload-artifact action from GitHub Actions to upload the results of the scan.
-        with: # This is setting the name of the artifact to upload.
-          name: checkov-results-${{ inputs.path }} # This is setting the name of the artifact to upload.
-          path: | # This is setting the path of the artifact to upload.
-            ${{ inputs.path }}/*.sarif # This is setting the path of the artifact to upload.
-            ${{ inputs.path }}/checkov-*.json # This is setting the path of the artifact to upload.
-          retention-days: 30 # This is setting the retention days for the artifact. 
-
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkov-results-${{ inputs.path }}
+          path: |
+            ${{ inputs.path }}/*.sarif
+            ${{ inputs.path }}/checkov-*.json
+          retention-days: 30
