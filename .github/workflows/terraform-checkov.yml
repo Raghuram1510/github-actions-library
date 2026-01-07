@@ -83,7 +83,7 @@ jobs: # defines all jobs in workflow
       
       - name: Upload Results # Step ID
         if: always() # This is setting the if flag to always to run the pipeline even if there are errors.
-        uses: actions/upload-artifact@v3 # This is using the upload-artifact action from GitHub Actions to upload the results of the scan.
+        uses: actions/upload-artifact@v4 # This is using the upload-artifact action from GitHub Actions to upload the results of the scan.
         with: # This is setting the name of the artifact to upload.
           name: checkov-results-${{ inputs.path }} # This is setting the name of the artifact to upload.
           path: | # This is setting the path of the artifact to upload.
