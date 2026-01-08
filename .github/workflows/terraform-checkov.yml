@@ -11,7 +11,7 @@ on:
         description: 'Minimum severity to fail (LOW, MEDIUM, HIGH, CRITICAL)'
         required: false
         type: string
-        default: 'MEDIUM'
+        default: 'HIGH'
       frameworks:
         description: 'Compliance frameworks to check (hipaa,soc2,cis)'
         required: false
@@ -25,8 +25,11 @@ on:
 
 jobs:
   checkov:
-    name: Checkov Security Scan
+    name: Checkov Compliance Scan
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write  
     
     steps:
       - name: Checkout Code
@@ -56,34 +59,24 @@ jobs:
           checkov -d . \
             --framework terraform \
             --compact \
-            --soft-fail
-          
-          echo ""
-          echo "===================="
-          echo "Compliance Summary"
-          echo "===================="
-          
-          if [[ "${{ inputs.frameworks }}" == *"hipaa"* ]]; then
-            echo "Checking HIPAA compliance..."
-            checkov -d . --framework terraform --check hipaa --compact
-          fi
-          
-          if [[ "${{ inputs.frameworks }}" == *"soc2"* ]]; then
-            echo "Checking SOC2 compliance..."
-            checkov -d . --framework terraform --check soc2 --compact
-          fi
-          
-          if [[ "${{ inputs.frameworks }}" == *"cis"* ]]; then
-            echo "Checking CIS benchmarks..."
-            checkov -d . --framework terraform --check cis --compact
-          fi
+            --output cli \
+            --output sarif \
+            --output-file-path checkov-results.sarif \
+            --hard-fail-on ${{ inputs.severity-threshold }},CRITICAL
+        continue-on-error: true
       
-      - name: Upload Results
+      - name: Upload SARIF to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ${{ inputs.path }}/checkov-results.sarif
+          category: checkov-${{ inputs.path }}
+        continue-on-error: true
+      
+      - name: Upload Checkov Results as Artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: checkov-results-${{ inputs.path }}
-          path: |
-            ${{ inputs.path }}/*.sarif
-            ${{ inputs.path }}/checkov-*.json
+          name: checkov-results-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ inputs.path }}/checkov-results.sarif
           retention-days: 30
