@@ -22,6 +22,9 @@ jobs:
   tfsec:
     name: tfsec Security Scan
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     
     steps:
       - name: Checkout Code
@@ -32,10 +35,26 @@ jobs:
         with:
           terraform_version: ${{ inputs.terraform-version }}
       
-      - name: Run tfsec
+      - name: Run tfsec Security Scan
         uses: aquasecurity/tfsec-action@v1.0.3
         with:
           working_directory: ${{ inputs.path }}
           soft_fail: true
-          format: default
+          format: sarif
           additional_args: --minimum-severity ${{ inputs.severity }}
+      
+      - name: Upload SARIF to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
+          category: tfsec-${{ inputs.path }}
+        continue-on-error: true
+      
+      - name: Upload tfsec Results as Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfsec-${{ github.run_id }}-${{ github.run_attempt }}
+          path: results.sarif
+          retention-days: 30
