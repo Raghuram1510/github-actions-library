@@ -4,20 +4,20 @@ on:
   workflow_call:
     inputs:
       path:
-        description: 'Path to Terraform directory to scan (modules, environments, apps, etc.)'
+        description: 'Path to Terraform directory to scan'
         required: true
         type: string
       severity:
-        description: 'Minimum severity to report (LOW, MEDIUM, HIGH, CRITICAL)'
+        description: 'Minimum severity level (LOW, MEDIUM, HIGH, CRITICAL)'
         required: false
         type: string
         default: 'MEDIUM'
-      terraform_version:
+      terraform-version:
         description: 'Terraform version'
         required: false
         type: string
         default: '1.9.0'
-    
+
 jobs:
   tfsec:
     name: tfsec Security Scan
@@ -27,32 +27,15 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
       
-      - name: Setup Terraform  # ← ADDED for consistency
+      - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ inputs.terraform-version }}
       
       - name: Run tfsec
-        uses: aquasecurity/tfsec-action@v1.0.3  # ← This is fine (action version, not tfsec version)
+        uses: aquasecurity/tfsec-action@v1.0.3
         with:
           working_directory: ${{ inputs.path }}
           soft_fail: true
           format: default
-          
-      - name: Run tfsec with Severity Filter
-        working-directory: ${{ inputs.path }}
-        run: |
-          echo "🔍 Running tfsec with ${{ inputs.severity }}+ severity..."
-          
-          # Install latest tfsec binary (1.28.14)
-          if ! command -v tfsec &> /dev/null; then
-            curl -s https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash
-          fi
-          
-          # Verify version
-          tfsec --version
-          
-          tfsec . \
-            --minimum-severity ${{ inputs.severity }} \
-            --format default \
-            --soft-fail
+          additional_args: --minimum-severity ${{ inputs.severity }}
