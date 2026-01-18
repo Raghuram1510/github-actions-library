@@ -1,0 +1,213 @@
+name: Terraform Plan
+
+on:
+  workflow_call:
+    inputs:
+      path:
+        description: 'Path to Terraform directory'
+        required: true
+        type: string
+      terraform-version:
+        description: 'Terraform version'
+        required: false
+        type: string
+        default: '1.14.3'
+      aws-region:
+        description: 'AWS region'
+        required: false
+        type: string
+        default: 'us-east-1'
+      notify-users:
+        description: 'GitHub usernames to notify (comma-separated, without @)'
+        required: false
+        type: string
+        default: ''
+      post-plan-to-pr:
+        description: 'Post plan output as PR comment'
+        required: false
+        type: boolean
+        default: true
+    secrets:
+      aws-role-arn:
+        description: 'AWS IAM role ARN to assume'
+        required: true
+    outputs:
+      plan-exit-code:
+        description: 'Terraform plan exit code (0=no changes, 2=changes)'
+        value: ${{ jobs.plan.outputs.exit-code }}
+
+jobs:
+  plan:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+      issues: write
+    outputs:
+      exit-code: ${{ steps.plan.outputs.exitcode }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.aws-role-arn }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+
+      - name: Terraform Init
+        working-directory: ${{ inputs.path }}
+        run: |
+          echo "🔧 Initializing Terraform..."
+          terraform init
+
+      - name: Terraform Plan
+        id: plan
+        working-directory: ${{ inputs.path }}
+        continue-on-error: true
+        run: |
+          echo "📋 Running Terraform Plan..."
+          set +e
+          terraform plan -no-color -detailed-exitcode -out=tfplan 2>&1 | tee plan-output.txt
+          EXITCODE=$?
+          echo "exitcode=$EXITCODE" >> $GITHUB_OUTPUT
+          echo "Plan exit code: $EXITCODE"
+          # Exit codes: 0=no changes, 1=error, 2=changes pending
+          if [ $EXITCODE -eq 1 ]; then
+            exit 1
+          fi
+
+      - name: Upload Plan Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ github.run_id }}
+          path: |
+            ${{ inputs.path }}/tfplan
+            ${{ inputs.path }}/plan-output.txt
+          retention-days: 7
+
+      # ========================================
+      # NOTIFICATION: Comment on Pull Request
+      # ========================================
+      - name: Post Plan to PR
+        if: github.event_name == 'pull_request' && inputs.post-plan-to-pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const planFile = '${{ inputs.path }}/plan-output.txt';
+            let plan = '';
+            
+            try {
+              plan = fs.readFileSync(planFile, 'utf8');
+            } catch (e) {
+              plan = 'Unable to read plan output';
+            }
+            
+            const truncatedPlan = plan.length > 60000 
+              ? plan.substring(0, 60000) + '\n\n... (truncated, see artifacts for full plan)'
+              : plan;
+            
+            const notifyUsers = '${{ inputs.notify-users }}'.split(',')
+              .filter(u => u.trim())
+              .map(u => '@' + u.trim())
+              .join(' ');
+            
+            const output = `### 📋 Terraform Plan
+            
+            ${notifyUsers ? '**Reviewers:** ' + notifyUsers : ''}
+            
+            <details>
+            <summary>Click to expand plan output</summary>
+            
+            \`\`\`hcl
+            ${truncatedPlan}
+            \`\`\`
+            
+            </details>
+            
+            ---
+            *Triggered by: @${{ github.actor }} | Workflow: [View Run](<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}>)*`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            });
+
+      # ========================================
+      # NOTIFICATION: Create Issue for Main Branch
+      # ========================================
+      - name: Create Approval Issue (Main Branch)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const planFile = '${{ inputs.path }}/plan-output.txt';
+            let plan = '';
+            
+            try {
+              plan = fs.readFileSync(planFile, 'utf8');
+            } catch (e) {
+              plan = 'Unable to read plan output';
+            }
+            
+            const truncatedPlan = plan.length > 30000 
+              ? plan.substring(0, 30000) + '\n\n... (truncated)'
+              : plan;
+            
+            const notifyUsers = '${{ inputs.notify-users }}'.split(',')
+              .filter(u => u.trim())
+              .map(u => '@' + u.trim())
+              .join(' ');
+            
+            const body = `## 🚀 Terraform Apply Pending Approval
+            
+            **Branch:** main
+            **Triggered by:** @${{ github.actor }}
+            **Commit:** ${{ github.sha }}
+            
+            ${notifyUsers ? '**Reviewers:** ' + notifyUsers : ''}
+            
+            ### 🔗 Actions Required
+            
+            1. Review the plan below
+            2. [Approve the workflow run](<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}>)
+            
+            ---
+            
+            ### 📋 Terraform Plan
+            
+            <details>
+            <summary>Click to expand</summary>
+            
+            \`\`\`hcl
+            ${truncatedPlan}
+            \`\`\`
+            
+            </details>`;
+            
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🚀 Terraform Apply Pending Approval - ' + new Date().toISOString().split('T')[0],
+              body: body,
+              labels: ['terraform', 'pending-approval', 'infrastructure']
+            });
+
+      - name: Plan Status Check
+        if: steps.plan.outputs.exitcode == '1'
+        run: |
+          echo "❌ Terraform plan failed!"
+          exit 1
